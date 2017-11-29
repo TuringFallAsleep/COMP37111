@@ -1,12 +1,3 @@
-/*
-=====================================================================
-
-File:        ex1.c
-Description: COMP27112, Lab Exercise 1, skeleton
-Authors:     Toby Howard
-
-=====================================================================
-*/
 #ifdef MACOSX
 #include <GLUT/glut.h>
 #include <math.h>
@@ -17,12 +8,16 @@ Authors:     Toby Howard
 #include <stdlib.h>
 #endif
 
+
 /* Set to 0 or 1 for normal or reversed mouse Y direction */
 #define INVERT_MOUSE 0
 
 #define RUN_SPEED  0.15
 #define TURN_ANGLE 4.0
-#define DEG_TO_RAD 0.017453293
+#define DEG_TO_RAD 0.017453292 // 3.1415926/180
+
+typedef enum { false, true } Boolean;
+
 
 GLdouble lat,     lon;              /* View angles (degrees)    */
 GLdouble mlat,    mlon;             /* Mouse look offset angles */   
@@ -45,7 +40,26 @@ GLfloat matEmissive[] =     { 0.0, 1.0, 0.0, 0.1 };
 static int hit_c = 0;
 int is_jumping = 0,    jump_up = 1,   drop_down = 0;
 GLfloat jump_hight = 6.0;
-GLfloat num;
+int num = 200;
+int count = 0;
+
+////////////////////////////////////////////////
+
+float teapotPositionX = 0.0;
+float teapotPositionY = 2.0;
+float teapotPositionZ = 0.0;
+
+float edge = 1.55242; // the distance from rotate center to teapot mouth, sqre(1.5^2 + 0.4^2)
+float alpha = 75.06858; // the angle from teapot mouth to y axis, atan(1.5/0.4)/DEG_TO_RAD
+
+
+////////////////////////////////////////////////
+
+static GLfloat vmax = 1.0; // when theta is 90.0
+GLfloat gravity = 0.005;
+float teapotTheta = 30.0;
+float groundYLocation = -10;
+float energyLoss = 0.5;
 
 ////////////////////////////////////////////////
 
@@ -89,36 +103,147 @@ glEnd();
 glEnable(GL_LIGHTING);
 } // energy()
 
+////////////////////////////////////////////////
+
+typedef struct {
+  float size; 
+  float lifetime;
+
+  float x;
+  float y;
+  float z;
+
+  float velocity;
+
+  float vy;
+  float vz;
+
+  float theta;
+
+  float r;
+  float g;
+  float b;
+
+  float waterDropStartX;
+  float waterDropStartY;
+  float waterDropStartZ;
+
+  Boolean hitGround;
+  int hitTime;
+
+  Boolean startPoint;
+
+  GLfloat matParticle[3];
+} WaterDrop;
+
+WaterDrop *waterDrop[500];
+
+void deadParticle(int i){
+  if (waterDrop[i]!=NULL){
+    free(waterDrop[i]);
+    printf("freed \n");
+  }
+}
+
+void particleMove(int index){
+  // if (index == 10)
+  // {
+  //   waterDrop[index]->size = 5.0;
+  // }
+  if (waterDrop[index]->hitTime <= 5){
+    if (waterDrop[index]->hitGround == false){
+      waterDrop[index]->vy += gravity; 
+
+      waterDrop[index]->y += waterDrop[index]->velocity * cos(waterDrop[index]->theta * DEG_TO_RAD) - waterDrop[index]->vy;
+      waterDrop[index]->x += waterDrop[index]->velocity * sin(waterDrop[index]->theta * DEG_TO_RAD);
+      // printf("hit_ground: %d \n", hit_ground);
+      // printf("particleMove: %i, particleMove: (x,y,z) = (%f, %f, %f) \n", index, waterDrop[index]->x, waterDrop[index]->y, waterDrop[index]->z);
+    }else if(waterDrop[index]->hitGround == true){
+      waterDrop[index]->vy = -energyLoss * waterDrop[index]->vy;
+      waterDrop[index]->velocity = energyLoss * waterDrop[index]->velocity;
+      waterDrop[index]->hitGround = false;
+      waterDrop[index]->hitTime++;
+      // printf("waterDrop[%d]->vy = %f \n", index, waterDrop[index]->vy);
+      // printf("hitGround, particleMove: %i, particleMove: (x,y,z) = (%f, %f, %f) \n", index, waterDrop[index]->x, waterDrop[index]->y, waterDrop[index]->z);
+    }
+
+    // printf("waterDrop[0]->x,y,z = (%f, %f, %f)\n", waterDrop[0]->x, waterDrop[0]->y, waterDrop[0]->z);
+  }
+
+  if (waterDrop[index]->hitTime >= 4){ // life time
+    // deadParticle(index);
+  }
+
+  }
+
+
+void initialiseParticle(int i){
+  waterDrop[i]->size = 1.0/16.0;
+  waterDrop[i]->lifetime = 100000;
+
+  waterDrop[i]->x = 0.1;
+  waterDrop[i]->y = 0.0;
+  waterDrop[i]->z = 0.0;
+
+  waterDrop[i]->velocity = 0.08;
+  waterDrop[i]->vy = 0.0;
+  waterDrop[i]->vz = 0.0;
+
+  waterDrop[i]->theta = teapotTheta;
+
+  waterDrop[i]->r = 0.6;
+  waterDrop[i]->g = 0.8;
+  waterDrop[i]->b = 1.0;
+
+  waterDrop[i]->matParticle[0] = waterDrop[i]->r;
+  waterDrop[i]->matParticle[1] = waterDrop[i]->g;
+  waterDrop[i]->matParticle[2] = waterDrop[i]->b;
+
+  waterDrop[i]->waterDropStartX = 0.0;
+  waterDrop[i]->waterDropStartY = 0.0;
+  waterDrop[i]->waterDropStartZ = 0.0;
+
+  waterDrop[i]->hitGround = false;
+  waterDrop[i]->hitTime = 0;
+
+  waterDrop[i]->startPoint = true;
+}
+
 //////////////////////////////////////////////
 
-// void cylinder(int steps, float height){
-// // Draws a cylinder with "steps" steps around the axis, and height "height".
-// // The cylinder is centred on (0,0,0)
-// float PI= 3.141592654;
-// float a= 0.0;
-// float da= 2 * PI / steps;
-// int i;
+void calculate_start_position(int i){
+  if (waterDrop[i]->startPoint == true){
 
-// glTranslatef(0.0, -height/2.0, 0.0);
-// for (i= 0; i < steps; i++) {
-//    glBegin(GL_QUADS);
-//     glNormal3f(cos(a), 0.0, sin(a));       glVertex3f(cos(a), 0.0, sin(a));
-//     glNormal3f(cos(a), 0.0, sin(a));       glVertex3f(cos(a), height, sin(a));
-//     glNormal3f(cos(a+da), 0.0, sin(a+da)); glVertex3f(cos(a+da), height, sin(a+da));
-//     glNormal3f(cos(a+da), 0.0, sin(a+da)); glVertex3f(cos(a+da), 0.0, sin(a+da));
-//    glEnd();
-//    a+= da;
-// }
-// } // cylinder()
+   float beta = (180 - waterDrop[i]->theta - alpha) * DEG_TO_RAD; 
+   
+   waterDrop[i]->waterDropStartX = teapotPositionX + edge * sin(beta);
+   waterDrop[i]->waterDropStartY = teapotPositionY - edge * cos(beta);
+   waterDrop[i]->waterDropStartZ = teapotPositionZ;
+
+   waterDrop[i]->x = waterDrop[i]->waterDropStartX;
+   waterDrop[i]->y = waterDrop[i]->waterDropStartY;
+   waterDrop[i]->z = waterDrop[i]->waterDropStartZ;
+
+   waterDrop[i]->startPoint = false;
+  }
+  
+}
 
 //////////////////////////////////////////////
+
 
 void draw_scene(void) {
   // Draws all the elements in the scene
   int x, z;
-  int L= 20;
+  int L= 40;
   int j;
-  GLfloat matTeapot[] =      { 1.0, 0.0, 0.0, 0.0 };
+  float R = 1.0;
+  
+  GLfloat matTeapot[] = { 0.8, 0.6, 0.6, 0.0 };
+  GLfloat matWater[] = { 0.6, 0.8, 1.0, 0.5};
+
+
+  // newParticle(waterDrop->size, waterDrop->velocity, waterDrop->lifetime, waterDrop->x, waterDrop->y, waterDrop->z, waterDrop->vy, waterDrop->theta, waterDrop->r, waterDrop->g, waterDrop->b);
   
   /* Draw ground */
   glDisable(GL_LIGHTING);
@@ -128,85 +253,77 @@ void draw_scene(void) {
   glDepthRange (0.1, 1.0);
   glColor3f(0.2, 0.2, 0.4);
   glBegin(GL_QUADS);
-  glVertex3f(-L, 0, -L);
-  glVertex3f(L, 0, -L);
-  glVertex3f(L, 0, L);
-  glVertex3f(-L, 0, L);
-  glEnd();
-  
-  glDepthRange (0.0, 0.9); 
-  glColor3f(0.2, 0.2, 0.2);
-  glLineWidth(1.0);
-  glBegin(GL_LINES);
-  for (x= -L; x <= L; x++)  {
-    glVertex3f((GLfloat) x, 0.01, -L);
-    glVertex3f((GLfloat) x, 0.01,  L);
-  }
-  for (z= -L; z <= L; z++)  {
-    glVertex3f(-L, 0.01, (GLfloat) z);
-    glVertex3f( L, 0.01, (GLfloat) z);
-  }
+  glVertex3f(-L, -10, -L);
+  glVertex3f(L, -10, -L);
+  glVertex3f(L, -10, L);
+  glVertex3f(-L, -10, L);
   glEnd();
 
   glEnable(GL_LIGHTING);
-  /* Draw pillars */
-  // glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, matSurface);
-  // for (x= -2; x <= 2; x+=4)
-  //   for (z= -4; z <= 4; z+=4) {
-  //       glPushMatrix();
-  //         glTranslatef((GLfloat) x, 1.7, (GLfloat) z);
-  //         glScalef(0.2, 3.0, 0.2); 
-	 //  cylinder(10, 1.0);
-  //       glPopMatrix();
-
-  //       glPushMatrix();
-  //         glTranslatef((GLfloat) x, 0.1, (GLfloat) z);
-  //         glScalef(0.5, 0.2, 0.5); 
-  //         glutSolidCube(1.0); /* Base */
-  //       glPopMatrix();
-
-  //       glPushMatrix();
-  //         glTranslatef((GLfloat) x, 3.3, (GLfloat) z);
-  //         glScalef(0.5, 0.2, 0.5); 
-  //         glutSolidCube(1.0); /* Top */
-  //       glPopMatrix();
-  //   } // for
-
-  // //Draw roof base
-  // glPushMatrix();
-  //   glTranslatef(0.0, 3.5, 0.0);
-  //   glScalef(5.0, 0.2, 9.0); 
-  //   glutSolidCube(1.0);
-  // glPopMatrix();
   
-  // // Draw the roof
-  // glBegin(GL_QUADS);
-  //  glVertex3f(2.5, 3.6, -4.5);
-  //  glVertex3f(2.5, 3.6, 4.5);
-  //  glVertex3f(0.0, 4.5, 4.5);
-  //  glVertex3f(0.0, 4.5, -4.5);
-  //  // other side
-  //  glVertex3f(-2.5, 3.6, -4.5);
-  //  glVertex3f(-2.5, 3.6, 4.5);
-  //  glVertex3f(0.0, 4.5, 4.5);
-  //  glVertex3f(0.0, 4.5, -4.5);
-  // glEnd();
-  
-  /* Draw the mystical object */
+  /* Draw the teapot */
   glPushMatrix();
-    glTranslatef(0.0, 1.5, 0.0);
-    glRotatef(ang, 0.0, 1.0, 0.0); 
-    glScalef(0.5, 0.5, 0.5); 
+    // glScalef(0.5, 0.5, 0.5); 
+    glTranslatef(teapotPositionX, teapotPositionY, teapotPositionZ); // (0.0, 2.0, 0.0)
+    // glRotatef(ang, 0.0, 1.0, 0.0);  // rotate the teapot
+    
+    
+    glRotatef(teapotTheta, 0.0, 0.0, -1.0); // teapot 30 deg left
     glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, matTeapot);
-    glutSolidTeapot(1.0);
-    for (j=0; j<2; j++) {
-        glPushMatrix();
-	glRotatef((j*2+1)*45.0, 1.0, 0.0, 0.0); 
-	energy(1.5, 1.7,  1.0,1.0,0.0);
-	energy(1.7, 1.9,  1.0,0.0,0.0);
-        glPopMatrix();
-	}
+
+    // glutSolidSphere(R,100,100); // the fairy 
+    glutSolidTeapot(1.0); // the fairy
+
+      glPushMatrix();
+      energy(1.0, 1.1,  1.0,1.0,0.0);
+      glPopMatrix();
+
   glPopMatrix();
+
+//////////// draw particle starts
+    if (count < num){
+      initialiseParticle(count);
+      for (int i = 0; i < count; i++){
+        // if (waterDrop[i]!=NULL){}
+          // glRotatef(teapotTheta, 0.0, 0.0, 1.0);
+          if (teapotTheta > 0.0){
+            glPushMatrix();
+            calculate_start_position(i); // has new water drop comes out
+            glTranslatef(waterDrop[i]->x, waterDrop[i]->y, waterDrop[i]->z);
+            glEnable(GL_POINT_SMOOTH);  
+            glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, waterDrop[i]->matParticle);
+            glutSolidSphere(waterDrop[i]->size,100,100); 
+            // glutSolidTeapot(waterDrop[count]->size);  
+            glEnd(); 
+            glPopMatrix();
+          }else{
+            glPushMatrix();
+            glTranslatef(waterDrop[i]->x, waterDrop[i]->y, waterDrop[i]->z);
+            glEnable(GL_POINT_SMOOTH);  
+            glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, waterDrop[i]->matParticle);
+            glutSolidSphere(waterDrop[i]->size,100,100); 
+            // glutSolidTeapot(waterDrop[count]->size);  
+            glEnd();
+            glPopMatrix();
+          }
+          // glRotatef(teapotTheta, 0.0, 0.0, 1.0); // water drop to vertical direction 
+      }
+    }else if (waterDrop[count]->hitTime<=5){
+      for (int i = 0; i < count; ++i)
+      {
+        glPushMatrix();
+        glTranslatef(waterDrop[i]->x, waterDrop[i]->y, waterDrop[i]->z);
+        glEnable(GL_POINT_SMOOTH);  
+        glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, waterDrop[i]->matParticle);
+        glutSolidSphere(waterDrop[i]->size,100,100); 
+        // glutSolidTeapot(waterDrop[count]->size);  
+        glEnd();
+        glPopMatrix();
+      }
+    }
+////////////////////// draw particle ends
+
+
 
 } // draw_scene()
 
@@ -242,11 +359,34 @@ void display(void) {
 
 //////////////////////////////////////////////
 
-void spin(void) {
+void animation(void) {
   // Spin the mystical object
   ang= ang + 1.0; if (ang > 360.0) ang= ang - 360.0;
+  // the track of water drop
+  if (count < num-1){
+    for (int i = 0; i < count; i++){
+      particleMove(i); // use count as index
+      if (waterDrop[i]->y < groundYLocation && waterDrop[i]->vy > 0.0){
+        waterDrop[i]->hitGround = true;
+        // printf("waterDrop[%d]->hitGround: true \n", i);
+      }
+    }
+    if (teapotTheta > 0.0){
+      count++;  
+      printf("%d\n", count);
+    }   
+  }else if (waterDrop[count]->hitTime<=5){
+    for (int i = 0; i < count; i++){
+      particleMove(i); 
+      if (waterDrop[i]->y < groundYLocation && waterDrop[i]->vy > 0.0){
+        waterDrop[i]->hitGround = true;
+        // printf("waterDrop[%d]->hitGround: true \n", i);
+      }
+    }
+  }
+  
+  // printf("count = %d \n", count);
 
-  /* To be completed */
   if (is_jumping){
         if (jump_up){
           eyey = eyey + 0.1;
@@ -269,7 +409,15 @@ void spin(void) {
 
 
   glutPostRedisplay();
-} //spin()
+} //animation()
+
+//////////////////////////////////////////////
+
+void allocateParticle(){
+  for (int i = 0; i < num; ++i){
+    waterDrop[i] = malloc(sizeof(WaterDrop));
+  }
+}
 
 //////////////////////////////////////////////
 
@@ -286,7 +434,6 @@ void reshape(int w, int h) {
 //////////////////////////////////////////////
 
 void mouse_motion(int x, int y) {
-
   /* To be completed */
   mlon = 0.01*(x-width/2)*(-100)/width;
   mlat = 0.01*(y-height/2)*(-100)/height;
@@ -294,7 +441,6 @@ void mouse_motion(int x, int y) {
     lon += mlon;
   if (lat + mlat <= 90 && lat + mlat>= -90)
     lat += mlat;
-
 } // mouse_motion()
 
 //////////////////////////////////////////////
@@ -302,6 +448,9 @@ void mouse_motion(int x, int y) {
 void keyboard(unsigned char key, int x, int y) {
   switch (key) {
     case 27:  /* Escape key */
+      printf("exit.\n");
+      // printf("%d", GLUT_KEY_PAGE_UP);
+      // printf("%d", GLUT_KEY_PAGE_DOWN);
       exit(0);
       break;
 
@@ -325,16 +474,56 @@ void keyboard(unsigned char key, int x, int y) {
     case 32:     
       is_jumping = 1;
       break;
- 
+    case 'e':
+      if (teapotTheta >= -89)
+        teapotTheta -= 5;
+      break;
+    case 'r':
+      if (teapotTheta <= 89)
+        teapotTheta += 5;
+      break;
+    case 'q':
+      teapotTheta = 0.0;
+      break;
+    case 'n':
+      if (num>50)
+      {
+        num -= 100;
+      }
+    case 'N':
+      if (num<10000)
+      {
+        num += 100;
+      }
+    case 'w': // w - up
+      teapotPositionY += 0.1;
+      break;
+    case 's': // s - down
+      teapotPositionY -= 0.1;
+      break;
+    case 'a': // a - left
+      teapotPositionX += 0.1;
+      break;
+    case 'd': // d - right
+      teapotPositionX -= 0.1;
+      break;
+    case 'k':
+      teapotPositionZ += 0.1;
+      break;
+    case 'l':
+      teapotPositionZ -= 0.1;
+      break;
 
     default: break;
       /* To be completed */
    }
+
+   
 } // keyboard()
 
 //////////////////////////////////////////////
 
-void cursor_keys(int key, int x, int y) {
+void cursor_keys(unsigned char key, int x, int y) {
   switch (key) {
     case GLUT_KEY_LEFT:
       lon += TURN_ANGLE;
@@ -368,7 +557,7 @@ void cursor_keys(int key, int x, int y) {
     case GLUT_KEY_HOME:
       eyex =  0.0; /* Set eyepoint at eye height within the scene */
       eyey =  1.7;
-      eyez = -10.0;
+      eyez = -8.0;
 
       upx = 0.0;   /* Set up direction to the +Y axis  */
       upy = 1.0;
@@ -392,8 +581,8 @@ void init(void) {
    
   /* Set initial view parameters */
   eyex=  0.0; /* Set eyepoint at eye height within the scene */
-  eyey=  1.7;
-  eyez= -10.0;
+  eyey=  3.0;
+  eyez= -20.0;
 
   upx= 0.0;   /* Set up direction to the +Y axis  */
   upy= 1.0;
@@ -415,16 +604,20 @@ void init(void) {
   glEnable(GL_NORMALIZE);
 } // init()
   
-//////////////////////////////////////////////
 
 int main(int argc, char** argv) {
+
+  // printf("%f\n", cos(135*DEG_TO_RAD));
+
+  allocateParticle(); 
+
   glutInit (&argc, argv);
   glutInitDisplayMode (GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH );
   glutInitWindowSize (width, height); 
   glutCreateWindow ("COMP37111 Coursework");
   init();
   glutDisplayFunc (display); 
-  glutIdleFunc (spin); 
+  glutIdleFunc (animation); 
   glutReshapeFunc (reshape);
   glutKeyboardFunc (keyboard);
   glutSpecialFunc (cursor_keys);
@@ -433,4 +626,6 @@ int main(int argc, char** argv) {
   return 0;
 }
 
-/* end of ex1.c */
+/* end of fairy.c */
+
+//gcc -DMACOSX -framework OpenGL -framework GLUT -o fairy fairy.c
