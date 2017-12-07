@@ -2,10 +2,14 @@
 #include <GLUT/glut.h>
 #include <math.h>
 #include <stdlib.h>
+#include <time.h>
+#include "frames.h"
 #else
 #include <GL/glut.h>
 #include <math.h>
 #include <stdlib.h>
+#include <time.h>
+#include "frames.h"
 #endif
 
 
@@ -63,6 +67,10 @@ GLfloat gravity = 0.005;
 float teapotTheta = 30.0;
 float groundYLocation = -10;
 float energyLoss = 0.5;
+float initVelocity = 0.08;
+float wind = 0.0;
+
+Boolean changeColour = false;
 
 ////////////////////////////////////////////////
 
@@ -83,31 +91,6 @@ else {return(0);}
 
 //////////////////////////////////////////////
 
-void energy(float ringMin, float ringMax, float r, float g, float b) {
-// Draw a ring of energy, comprising a swarm of particles in random positions, but 
-// bounded to lie withing ringMin-ringMax, the space between two concentric spheres
-int i;
-float R= 10.0; // to get rands in range 0-R
-float x,y,z;
-
-glDisable(GL_LIGHTING); // don't want lighting on
-glEnable(GL_POINT_SMOOTH);
-glPointSize(2.0);
-glColor3f(r,g,b);
-glBegin(GL_POINTS);
-for (i= 0; i<10000; i++) {
-   // get rand p in range -R/2 < p < +R/2
-   x= R* rand() / (((double)RAND_MAX+1)) -R/2.0;
-   y= R* rand() / (((double)RAND_MAX+1)) -R/2.0;
-   z= 0.0; // to make it a flat ring
-   if (within(x,y,z, ringMin, ringMax)) glVertex3f(x,y,z);
-}
-glEnd();
-glEnable(GL_LIGHTING);
-} // energy()
-
-////////////////////////////////////////////////
-
 typedef struct {
   float size; 
   float lifetime;
@@ -119,7 +102,7 @@ typedef struct {
   float velocity;
 
   float vy;
-  float vz;
+  float vWind;
 
   float theta;
 
@@ -148,7 +131,7 @@ void deadParticle(int i){
     if (waterDrop[i]->hitTime >= goDie){
       free(waterDrop[i]);
       waterDrop[i] = NULL;
-      printf("waterDrop[%d] freed \n", i);
+      printf("waterDrop[%d] is freed \n", i);
     }
   }
 }
@@ -162,9 +145,12 @@ void particleMove(int index){
   if (waterDrop[index]->hitTime < 4){
     if (waterDrop[index]->hitGround == false){
       waterDrop[index]->vy += gravity; 
+      waterDrop[index]->velocity = initVelocity*(teapotTheta/90.0);
+      waterDrop[index]->vWind = wind;
 
       waterDrop[index]->y += waterDrop[index]->velocity * cos(waterDrop[index]->theta * DEG_TO_RAD) - waterDrop[index]->vy;
       waterDrop[index]->x += waterDrop[index]->velocity * sin(waterDrop[index]->theta * DEG_TO_RAD);
+      waterDrop[index]->z += waterDrop[index]->vWind;
       // printf("hit_ground: %d \n", hit_ground);
       // printf("particleMove: %i, particleMove: (x,y,z) = (%f, %f, %f) \n", index, waterDrop[index]->x, waterDrop[index]->y, waterDrop[index]->z);
     }else if(waterDrop[index]->hitGround == true){
@@ -183,6 +169,7 @@ void particleMove(int index){
 
 
 void initialiseParticle(int i){
+
   waterDrop[i]->size = 1.0/16.0;
   waterDrop[i]->lifetime = 100000;
 
@@ -190,15 +177,24 @@ void initialiseParticle(int i){
   waterDrop[i]->y = 0.0;
   waterDrop[i]->z = 0.0;
 
-  waterDrop[i]->velocity = 0.08;
+  waterDrop[i]->velocity = initVelocity;
   waterDrop[i]->vy = 0.0;
-  waterDrop[i]->vz = 0.0;
+  waterDrop[i]->vWind = wind;
 
   waterDrop[i]->theta = teapotTheta;
 
-  waterDrop[i]->r = 0.6;
-  waterDrop[i]->g = 0.8;
-  waterDrop[i]->b = 1.0;
+  // colour
+  if (!changeColour)
+  {
+    waterDrop[i]->r = 0.6;
+    waterDrop[i]->g = 0.8;
+    waterDrop[i]->b = 1.0;
+  }else{
+    waterDrop[i]->r = (float)rand()/(float)(RAND_MAX);
+    waterDrop[i]->g = (float)rand()/(float)(RAND_MAX);
+    waterDrop[i]->b = (float)rand()/(float)(RAND_MAX);
+  }
+
 
   waterDrop[i]->matParticle[0] = waterDrop[i]->r;
   waterDrop[i]->matParticle[1] = waterDrop[i]->g;
@@ -225,9 +221,11 @@ void calculate_start_position(int i){
    waterDrop[i]->waterDropStartY = teapotPositionY - edge * cos(beta);
    waterDrop[i]->waterDropStartZ = teapotPositionZ;
 
-   waterDrop[i]->x = waterDrop[i]->waterDropStartX;
-   waterDrop[i]->y = waterDrop[i]->waterDropStartY;
-   waterDrop[i]->z = waterDrop[i]->waterDropStartZ;
+   waterDrop[i]->x = waterDrop[i]->waterDropStartX  + (float)rand()/(float)(RAND_MAX)/15.0;
+   waterDrop[i]->y = waterDrop[i]->waterDropStartY + (float)rand()/(float)(RAND_MAX)/15.0;
+   waterDrop[i]->z = waterDrop[i]->waterDropStartZ + (float)rand()/(float)(RAND_MAX)/15.0;
+
+   // printf("waterDrop[%d]->x = %f\n", waterDrop[i]->x);
 
    waterDrop[i]->startPoint = false;
   }
@@ -277,11 +275,8 @@ void draw_scene(void) {
     glRotatef(teapotTheta, 0.0, 0.0, -1.0); // teapot 30 deg left
     glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, matTeapot);
 
-    glutSolidTeapot(1.0); // the fairy
+    glutSolidTeapot(1.0); // the teapot
 
-      glPushMatrix();
-      energy(1.0, 1.1,  1.0,1.0,0.0);
-      glPopMatrix();
 
   glPopMatrix();
 
@@ -335,7 +330,6 @@ void draw_scene(void) {
         {
           deadParticle(i);
         }
-        
         // printf("waterDrop[%d] is freed\n", i);
         // glClear(GL_ACCUM_BUFFER_BIT);
       }
@@ -367,11 +361,13 @@ void display(void) {
    // glMaterialfv(GL_FRONT, GL_SPECULAR,  matSpecular);
    // glMaterialfv(GL_FRONT, GL_SHININESS, matShininess);
    // glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, matSurface);
+   frameStart();
    glLoadIdentity();
    calculate_lookpoint(); /* Compute the centre of interest   */
    gluLookAt(eyex, eyey, eyez, centerx, centery, centerz, upx, upy, upz);
    glLightfv(GL_LIGHT0, GL_POSITION, light_position0);
    draw_scene();
+   frameEnd(GLUT_BITMAP_HELVETICA_10, 1.0, 1.0, 1.0, 0.05, 0.95);
    glutSwapBuffers();
 } // display()
 
@@ -512,15 +508,9 @@ void keyboard(unsigned char key, int x, int y) {
       teapotTheta = 0.0;
       break;
     case 'n':
-      if (num>50)
-      {
-        num -= 100;
-      }
-    case 'N':
-      if (num<10000)
-      {
-        num += 100;
-      }
+      changeColour = !changeColour;
+      break;
+    
     case 'w': // w - up
       teapotPositionY += 0.1;
       break;
@@ -536,15 +526,53 @@ void keyboard(unsigned char key, int x, int y) {
     case 'k':
       teapotPositionZ += 0.1;
       break;
+    case 'K':
+      teapotPositionZ += 0.1;
+      break;
     case 'l':
+      teapotPositionZ -= 0.1;
+      break;
+    case 'L':
       teapotPositionZ -= 0.1;
       break;
     case 'p':
       stain = !stain;
       break;
+    case 'm':
+      if (wind<0.4)
+        wind += 0.001;
+      break;
+    case 'M':
+      if (wind>-0.4)
+        wind -= 0.001;
+      break;
+    case 'v':
+      if (initVelocity<0.5)
+        initVelocity-=0.001;
+      break;
+    case 'V':
+      if (initVelocity>0.001)
+        initVelocity+=0.001;
+      break;
+    case 'g':
+      if (gravity<0.05)
+        gravity -= 0.001;
+      break;
+    case 'G':
+      if (gravity>0.001)
+        gravity += 0.001;
+      break;
+    case 'o':
+      if (qualityOfWater>3)
+        qualityOfWater--;
+      break;
+    case 'O':
+      if (qualityOfWater<20)
+        qualityOfWater++;
+      break;
 
     default: break;
-      /* To be completed */
+
    }
 
    
@@ -635,6 +663,8 @@ void init(void) {
 
 int main(int argc, char** argv) {
 
+  srand((unsigned int)time(NULL));
+
   waterDrop = malloc(num * sizeof(WaterDrop*));
 
   printf("Object:\nw - up; s - down; a - left; d - right;\nl - front; k - back; \nr: rotate down; e: rotate up;\nViewer: \nupkey,downkey,leftkey,rightkey\nEye: mouse;\nStain: p\n");
@@ -660,4 +690,4 @@ int main(int argc, char** argv) {
 
 /* end of fairy.c */
 
-//gcc -DMACOSX -framework OpenGL -framework GLUT -o fairy fairy.c
+//gcc -DMACOSX -framework OpenGL -framework GLUT -o teapot teapot.c
